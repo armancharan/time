@@ -100,7 +100,8 @@ root.innerHTML = `
       ></p>
     </div>
 
-    <section class="picker" aria-labelledby="fidelity-label">
+    <div class="slots">
+      <section class="slot picker" data-slot="fidelity" aria-labelledby="fidelity-label">
       <h2 class="picker-label" id="fidelity-label">Fidelity</h2>
       <div
         class="modes"
@@ -129,9 +130,9 @@ root.innerHTML = `
           </span>
         </label>
       </div>
-    </section>
+      </section>
 
-    <section class="picker" aria-labelledby="mechanism-label">
+      <section class="slot picker" data-slot="mechanism" aria-labelledby="mechanism-label">
       <h2 class="picker-label" id="mechanism-label">Mechanism</h2>
       <div
         class="modes"
@@ -139,7 +140,17 @@ root.innerHTML = `
         aria-labelledby="mechanism-label"
         data-ref="modes"
       ></div>
-    </section>
+      </section>
+
+      <section class="slot picker" data-slot="history" aria-labelledby="history-label">
+        <h2 class="picker-label" id="history-label">History</h2>
+        <div data-ref="history">
+          <p class="slot-note">Tracking is off.</p>
+        </div>
+      </section>
+
+      <section class="slot slot-empty" data-slot="reserved-a" aria-hidden="true"></section>
+    </div>
 
     <footer class="colophon">
       <p class="dedication">A product of dedication.</p>

@@ -20,6 +20,7 @@
 html,
 body {
   margin: 0;
+  width: 100%;
   min-height: 90vh;
   min-height: 100dvh;
   background: var(--bg);
@@ -30,18 +31,21 @@ body {
 }
 
 #app {
+  width: 100%;
   min-height: 90vh;
   min-height: 100dvh;
 }
 
 .shell {
-  max-width: 36rem;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto auto auto;
+  width: 100%;
+  max-width: none;
   min-height: 90vh;
   min-height: 100dvh;
-  margin: 0 auto;
-  padding: 2.5rem 1.25rem max(2rem, env(safe-area-inset-bottom, 0px) + 1.5rem);
-  display: flex;
-  flex-direction: column;
+  margin: 0;
+  padding: 2.5rem 1.5rem max(2rem, env(safe-area-inset-bottom, 0px) + 1.5rem);
   gap: 1.75rem;
   box-sizing: border-box;
 }
@@ -165,7 +169,30 @@ body {
 
 .preview {
   display: grid;
+  width: 100%;
   gap: 0;
+}
+
+.slots {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem 1.75rem;
+  align-items: start;
+}
+
+@media (min-width: 64rem) {
+  .slots {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.slot {
+  min-width: 0;
+}
+
+.slot-empty {
+  min-height: 6rem;
+  border: 1px solid var(--line);
 }
 
 .stage .actions {
@@ -202,6 +229,13 @@ body {
   font-size: 1rem;
   font-weight: 500;
   color: var(--ink);
+}
+
+.slot-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.625;
 }
 
 .modes {
