@@ -63,7 +63,7 @@ a pnpm sandbox.
 
 ## Frame engine (`crates/frame_engine`)
 
-`render_frame(width, height, t_ms) -> RGBA8` (`MM:SS`); WASM `renderFrame` also takes a fidelity flag for `MM:SS.mmm`.
+`render_frame(width, height, t_ms) -> RGBA8` (`H:MM:SS`); WASM `renderFrame` also takes a fidelity flag for `H:MM:SS.mmm`. Hours wrap at 100.
 
 Host `rust_test` covers buffer sizing and motion. WASM exports
 `renderFrame` / `frameByteLen` for the browser driver.
@@ -82,7 +82,7 @@ Polymorphic frame pipeline (`apps/web/src/frame`):
 Screen stay-awake uses the Wake Lock API beside the canvas preview.
 Video stay-awake uses the playing `<video>` MediaStream.
 
-The document title mirrors the clock (`MM:SS` / `MM:SS.mmm · time`) by
+The document title mirrors the clock (`H:MM:SS` / `H:MM:SS.mmm · time`) by
 polling `elapsedMs` on an interval, so the tab label still advances when rAF
 is background-throttled. Idle and reset restore `time`.
 

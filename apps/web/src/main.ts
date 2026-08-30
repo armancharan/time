@@ -1,15 +1,21 @@
 import "./styles/main.css"
 import {
+  appendRecord,
   capabilityFor,
   initialSession,
   offeredModes,
   reduceSession,
+  setLogEnabled,
+  clearRecords,
+  removeRecord,
   type KeepAwakeMode,
+  type SessionLog,
   type SessionSnapshot,
   type StopReason,
 } from "@time/core"
 import { modeCopy } from "./copy/modes"
-import { documentTitleFor } from "./drivers/documentTitle"
+import { documentTitleFor, formatElapsed } from "./drivers/documentTitle"
+import { loadSessionLog, saveSessionLog } from "./drivers/sessionLog"
 import { screenOptionState } from "./drivers/screenOption"
 import {
   classifyWakeLockError,
@@ -48,6 +54,7 @@ let modesPaintLocked = false
 let screenFailure: WakeLockFailureKind | null = null
 /** Interval that polls elapsed time into `document.title` while the clock runs. */
 let titleLoop = 0
+let log: SessionLog = loadSessionLog()
 
 const root = document.querySelector<HTMLDivElement>("#app")
 if (!root) throw new Error("#app missing")
@@ -116,7 +123,7 @@ root.innerHTML = `
           </span>
           <span class="mode-copy">
             <span class="mode-title">Seconds</span>
-            <span class="mode-blurb">Timer as <code class="mode-code">MM:SS</code>.</span>
+            <span class="mode-blurb">Timer as <code class="mode-code">H:MM:SS</code>.</span>
           </span>
         </label>
         <label class="mode">
@@ -126,7 +133,7 @@ root.innerHTML = `
           </span>
           <span class="mode-copy">
             <span class="mode-title">Milliseconds</span>
-            <span class="mode-blurb">Timer as <code class="mode-code">MM:SS.mmm</code>.</span>
+            <span class="mode-blurb">Timer as <code class="mode-code">H:MM:SS.mmm</code>.</span>
           </span>
         </label>
       </div>
@@ -144,9 +151,7 @@ root.innerHTML = `
 
       <section class="slot picker" data-slot="history" aria-labelledby="history-label">
         <h2 class="picker-label" id="history-label">History</h2>
-        <div data-ref="history">
-          <p class="slot-note">Tracking is off.</p>
-        </div>
+        <div data-ref="history"></div>
       </section>
 
       <section class="slot slot-empty" data-slot="reserved-a" aria-hidden="true"></section>
@@ -182,6 +187,7 @@ const els = {
   stage: root.querySelector<HTMLDivElement>("[data-ref=stage]")!,
   canvas: root.querySelector<HTMLCanvasElement>("[data-ref=canvas]")!,
   video: root.querySelector<HTMLVideoElement>("[data-ref=video]")!,
+  history: root.querySelector<HTMLDivElement>("[data-ref=history]")!,
 }
 
 function activeHost(): FrameHost {
@@ -443,8 +449,62 @@ function paintModes() {
     })
 }
 
+function persistLog() {
+  saveSessionLog(log)
+}
+
 function paintStatus() {
   els.status.textContent = statusLine()
+}
+
+function paintHistory() {
+  const rows = log.records
+    .map((row) => {
+      const duration = formatElapsed(row.elapsedMs, row.fidelity)
+      return `<li class="history-row">
+        <span>${duration} · ${modeLabel(row.mode)}</span>
+        <button type="button" class="mode-retry" data-wipe-id="${row.id}">Wipe</button>
+      </li>`
+    })
+    .join("")
+  const list = rows
+    ? `<ol class="history-list">${rows}</ol>
+       <button type="button" class="mode-retry" data-ref="history-wipe-all">Wipe all</button>`
+    : `<p class="slot-note">${log.enabled ? "No sessions yet." : "Tracking is off."}</p>`
+  els.history.innerHTML = `
+    <label class="history-enable">
+      <input type="checkbox" data-ref="history-enabled" ${log.enabled ? "checked" : ""} />
+      Track sessions on this machine
+    </label>
+    ${list}
+  `
+  els.history
+    .querySelector<HTMLInputElement>("[data-ref=history-enabled]")
+    ?.addEventListener("change", (event) => {
+      const box = event.currentTarget
+      if (!(box instanceof HTMLInputElement)) return
+      log = setLogEnabled(log, box.checked)
+      persistLog()
+      paintHistory()
+    })
+  els.history
+    .querySelectorAll<HTMLButtonElement>("[data-wipe-id]")
+    .forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-wipe-id")
+        if (!id) return
+        log = removeRecord(log, id)
+        persistLog()
+        paintHistory()
+      })
+    })
+  els.history
+    .querySelector<HTMLButtonElement>("[data-ref=history-wipe-all]")
+    ?.addEventListener("click", () => {
+      log = clearRecords(log)
+      persistLog()
+      paintHistory()
+    })
 }
 
 function paintTitle() {
@@ -503,6 +563,7 @@ function paint() {
   els.stage.dataset.elapsedMs = String(timer?.elapsedMs ?? 0)
   paintStatus()
   ensureTitleLoop()
+  paintHistory()
   syncSurfaceVisibility()
   paintModes()
   patchFidelitySelection(fidelity)
@@ -879,11 +940,25 @@ async function startSession() {
 }
 
 async function stopSession(reason: StopReason) {
+  const wasLive = snap.state === "active" || snap.state === "paused"
+  const elapsedMs = timer?.elapsedMs ?? 0
+  const startedAt = snap.startedAt
   await stopDriverOnly(reason)
   if (timer) {
     timer.reset()
   } else {
     await ensureSurface({ tMs: 0, resume: "idle" })
+  }
+  if (wasLive && log.enabled && elapsedMs > 0 && startedAt !== null) {
+    log = appendRecord(log, {
+      id: crypto.randomUUID(),
+      startedAt,
+      endedAt: Date.now(),
+      elapsedMs,
+      mode,
+      fidelity,
+    })
+    persistLog()
   }
   snap = reduceSession(snap, { type: "STOP", reason })
   paint()

@@ -1,4 +1,14 @@
 export {
+  appendRecord,
+  clearRecords,
+  emptyLog,
+  removeRecord,
+  setLogEnabled,
+  type SessionFidelity,
+  type SessionLog,
+  type SessionRecord,
+} from "./history"
+export {
   capabilityFor,
   desktopCapability,
   initialSession,

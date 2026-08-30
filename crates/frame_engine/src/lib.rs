@@ -10,9 +10,9 @@ use wasm_bindgen::prelude::*;
 /// How finely the stopwatch is drawn.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TimerFidelity {
-    /// `MM:SS`
+    /// `H:MM:SS`
     Seconds,
-    /// `MM:SS.mmm`
+    /// `H:MM:SS.mmm`
     Milliseconds,
 }
 
@@ -71,7 +71,7 @@ const PERIOD_GLYPH: [u8; 7] = [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00
 
 /// Render a black timer on a white background into a newly allocated RGBA8 buffer.
 ///
-/// Seconds fidelity is `MM:SS`; milliseconds is `MM:SS.mmm`.
+/// Seconds fidelity is `H:MM:SS`; milliseconds is `H:MM:SS.mmm`.
 pub fn render_frame(width: u32, height: u32, t_ms: u32) -> Vec<u8> {
     render_frame_ex(width, height, t_ms, TimerFidelity::Seconds)
 }
@@ -115,23 +115,42 @@ pub fn paint_frame(out: &mut [u8], header: FrameHeader) {
     }
 
     let total_secs = header.t_ms / 1000;
-    let mins = (total_secs / 60) % 100;
+    let hours = (total_secs / 3600) % 100;
+    let mins = (total_secs / 60) % 60;
     let secs = total_secs % 60;
     let millis = header.t_ms % 1000;
-    let mut chars = [TimerGlyph::Colon; 9];
-    chars[0] = TimerGlyph::Digit((mins / 10) as u8);
-    chars[1] = TimerGlyph::Digit((mins % 10) as u8);
-    chars[2] = TimerGlyph::Colon;
-    chars[3] = TimerGlyph::Digit((secs / 10) as u8);
-    chars[4] = TimerGlyph::Digit((secs % 10) as u8);
+    let mut chars = [TimerGlyph::Colon; 12];
+    let mut i = 0usize;
+    if hours >= 10 {
+        chars[i] = TimerGlyph::Digit((hours / 10) as u8);
+        i += 1;
+    }
+    chars[i] = TimerGlyph::Digit((hours % 10) as u8);
+    i += 1;
+    chars[i] = TimerGlyph::Colon;
+    i += 1;
+    chars[i] = TimerGlyph::Digit((mins / 10) as u8);
+    i += 1;
+    chars[i] = TimerGlyph::Digit((mins % 10) as u8);
+    i += 1;
+    chars[i] = TimerGlyph::Colon;
+    i += 1;
+    chars[i] = TimerGlyph::Digit((secs / 10) as u8);
+    i += 1;
+    chars[i] = TimerGlyph::Digit((secs % 10) as u8);
+    i += 1;
     let n = match header.fidelity {
-        TimerFidelity::Seconds => 5,
+        TimerFidelity::Seconds => i,
         TimerFidelity::Milliseconds => {
-            chars[5] = TimerGlyph::Period;
-            chars[6] = TimerGlyph::Digit((millis / 100) as u8);
-            chars[7] = TimerGlyph::Digit(((millis / 10) % 10) as u8);
-            chars[8] = TimerGlyph::Digit((millis % 10) as u8);
-            9
+            chars[i] = TimerGlyph::Period;
+            i += 1;
+            chars[i] = TimerGlyph::Digit((millis / 100) as u8);
+            i += 1;
+            chars[i] = TimerGlyph::Digit(((millis / 10) % 10) as u8);
+            i += 1;
+            chars[i] = TimerGlyph::Digit((millis % 10) as u8);
+            i += 1;
+            i
         }
     };
 
@@ -213,7 +232,7 @@ fn blit_glyph(
 
 /// WASM: return RGBA bytes for a frame.
 ///
-/// `fidelity`: `0` = `MM:SS`, `1` = `MM:SS.mmm`.
+/// `fidelity`: `0` = `H:MM:SS`, `1` = `H:MM:SS.mmm`.
 #[wasm_bindgen(js_name = renderFrame)]
 pub fn render_frame_wasm(width: u32, height: u32, t_ms: u32, fidelity: u32) -> Vec<u8> {
     render_frame_ex(width, height, t_ms, TimerFidelity::from_u32(fidelity))
@@ -262,6 +281,13 @@ mod tests {
         let buf = render_frame(160, 100, 0);
         let has_black = buf.chunks_exact(4).any(|px| px == [0, 0, 0, 255]);
         assert!(has_black, "expected black timer pixels on white");
+    }
+
+    #[test]
+    fn hour_boundary_changes_pixels() {
+        let under = render_frame(160, 100, 3_599_000);
+        let over = render_frame(160, 100, 3_600_000);
+        assert_ne!(under, over);
     }
 
     #[test]

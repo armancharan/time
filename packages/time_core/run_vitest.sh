@@ -42,4 +42,4 @@ if ! NODE_BIN="$(find_node)"; then
   exit 1
 fi
 
-exec "${NODE_BIN}" --experimental-strip-types --test src/session.node-test.ts
+exec "${NODE_BIN}" --experimental-strip-types --test src/session.node-test.ts src/history.node-test.ts

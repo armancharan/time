@@ -32,6 +32,9 @@ test.describe("time", () => {
     await expect(page.getByText("a monument,")).toBeVisible()
     await expect(page.getByText("to the concept,")).toBeVisible()
     await expect(page.getByText("that is")).toBeVisible()
+    await expect(page.getByRole("heading", { name: "History" })).toBeVisible()
+    await expect(page.getByText("Track sessions on this machine")).toBeVisible()
+    await expect(page.getByText("Tracking is off.")).toBeVisible()
     await expect(page).toHaveTitle("time")
     await expect(page.getByTestId("status")).toContainText("Ready")
     await expect(page.getByRole("radio", { name: /Video/i })).toBeChecked()
@@ -48,7 +51,7 @@ test.describe("time", () => {
     await expect(page.getByTestId("status")).toContainText("On", {
       timeout: 15_000,
     })
-    await expect(page).toHaveTitle(/^\d{2}:\d{2} · time$/)
+    await expect(page).toHaveTitle(/^\d{1,2}:\d{2}:\d{2} · time$/)
 
     const runningTitle = await page.title()
     await expect
@@ -58,7 +61,7 @@ test.describe("time", () => {
     await page.getByRole("button", { name: "Pause" }).click()
     await expect(page.getByTestId("status")).toContainText("Paused")
     const pausedTitle = await page.title()
-    expect(pausedTitle).toMatch(/^\d{2}:\d{2} · time$/)
+    expect(pausedTitle).toMatch(/^\d{1,2}:\d{2}:\d{2} · time$/)
     await page.waitForTimeout(1_200)
     expect(await page.title()).toBe(pausedTitle)
 
@@ -70,7 +73,7 @@ test.describe("time", () => {
     await expect(page.getByTestId("status")).toContainText("On", {
       timeout: 15_000,
     })
-    await expect(page).toHaveTitle(/^\d{2}:\d{2}\.\d{3} · time$/)
+    await expect(page).toHaveTitle(/^\d{1,2}:\d{2}:\d{2}\.\d{3} · time$/)
   })
 
   test("play pause stop then Screen ↔ Video", async ({ page }) => {
