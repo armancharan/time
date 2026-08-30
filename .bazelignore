@@ -3,8 +3,8 @@ apps/web/dist
 apps/web/node_modules
 bazel-bin
 bazel-out
-bazel-tabawake
+bazel-time
 bazel-testlogs
 e2e/node_modules
 node_modules
-packages/tabawake_core/node_modules
+packages/time_core/node_modules

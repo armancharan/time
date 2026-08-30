@@ -1,10 +1,11 @@
-# tabawake
+# time
 
-Keep **this screen** awake while **this tab** is visible.
+A monument, to the concept, that is.
 
-Portfolio systems demo: Screen Wake Lock as the primary path, a Rust/WASM
-procedural frame engine streaming into `<video srcObject>`, thin custom Bazel
-rules, and a Playwright media-stream contract.
+A work timer that keeps this tab awake while it runs. Glance the elapsed
+time in the tab, optionally keep a local session log.
+
+Lineage: [tabawake](https://github.com/armancharan/tabawake).
 
 ## Quick start
 
@@ -37,7 +38,7 @@ apps/web                 UI + drivers
 crates/frame_engine      Rust RGBA painter (+ WASM)
 docs/ARCHITECTURE.md     deeper design notes
 e2e                      Playwright contract
-packages/tabawake_core   session state machine
+packages/time_core       session state machine
 tools/rules              media_stream_e2e, wasm_frame_engine
 ```
 

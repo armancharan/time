@@ -7,8 +7,9 @@ import {
   type KeepAwakeMode,
   type SessionSnapshot,
   type StopReason,
-} from "@tabawake/core"
+} from "@time/core"
 import { modeCopy } from "./copy/modes"
+import { documentTitleFor } from "./drivers/documentTitle"
 import { screenOptionState } from "./drivers/screenOption"
 import {
   classifyWakeLockError,
@@ -45,6 +46,8 @@ let surfaceGen = 0
 let modesPaintLocked = false
 /** Last Screen Wake Lock consume failure — drives disable + retry prompt. */
 let screenFailure: WakeLockFailureKind | null = null
+/** Interval that polls elapsed time into `document.title` while the clock runs. */
+let titleLoop = 0
 
 const root = document.querySelector<HTMLDivElement>("#app")
 if (!root) throw new Error("#app missing")
@@ -52,12 +55,11 @@ if (!root) throw new Error("#app missing")
 root.innerHTML = `
   <main class="shell">
     <header class="masthead">
-      <h1 class="brand">tabawake</h1>
+      <h1 class="brand">time</h1>
       <p class="lede">
-        Keeps this tab awake<span class="fn" aria-hidden="true">*</span><span class="sr-only"> (see note)</span>
-      </p>
-      <p class="disclaimer" role="note">
-        <span class="fn" aria-hidden="true">*</span>provided the tab is focused.
+        <span>a monument,</span>
+        <span>to the concept,</span>
+        <span>that is</span>
       </p>
     </header>
 
@@ -81,7 +83,7 @@ root.innerHTML = `
         <div class="actions">
           <button class="primary" type="button" data-ref="toggle" aria-pressed="false">
             <span class="btn-icon" aria-hidden="true" data-ref="toggle-icon-start"></span>
-            <span data-ref="toggle-label">Keep tab awake</span>
+            <span data-ref="toggle-label">Start</span>
             <span class="btn-icon" aria-hidden="true" data-ref="toggle-icon-end"></span>
           </button>
           <button class="secondary" type="button" data-ref="pause" hidden>
@@ -141,6 +143,7 @@ root.innerHTML = `
 
     <footer class="colophon">
       <p class="dedication">A product of dedication.</p>
+      <p class="lineage">from tabawake</p>
       <a
         class="home-link"
         href="https://armancharan.com"
@@ -231,6 +234,7 @@ function onFidelityChange(next: TimerFidelity) {
   fidelity = next
   patchFidelitySelection(next)
   timer?.setFidelity(next)
+  restartTitleLoop()
 }
 
 function modeLabel(m: KeepAwakeMode | null): string {
@@ -432,16 +436,52 @@ function paintStatus() {
   els.status.textContent = statusLine()
 }
 
+function paintTitle() {
+  const next = documentTitleFor({
+    elapsedMs: timer?.elapsedMs ?? 0,
+    fidelity,
+    showElapsed: snap.state === "active" || snap.state === "paused",
+  })
+  if (document.title !== next) {
+    document.title = next
+  }
+}
+
+/** Tick the tab title while the clock advances; freeze or restore the brand otherwise. */
+function ensureTitleLoop() {
+  paintTitle()
+  const shouldTick = snap.state === "active"
+  if (shouldTick && !titleLoop) {
+    titleLoop = window.setInterval(
+      paintTitle,
+      fidelity === "milliseconds" ? 100 : 250,
+    )
+    return
+  }
+  if (!shouldTick && titleLoop) {
+    clearInterval(titleLoop)
+    titleLoop = 0
+  }
+}
+
+function restartTitleLoop() {
+  if (titleLoop) {
+    clearInterval(titleLoop)
+    titleLoop = 0
+  }
+  ensureTitleLoop()
+}
+
 function paint() {
   const sessionOn = snap.state === "active" || snap.state === "paused"
   const isPaused = snap.state === "paused"
-  els.toggleLabel.textContent = sessionOn ? "Reset" : "Keep tab awake"
+  els.toggleLabel.textContent = sessionOn ? "Reset" : "Start"
   if (sessionOn) {
     els.toggleIconStart.textContent = "↺"
     els.toggleIconEnd.textContent = ""
   } else {
-    els.toggleIconStart.textContent = "☼"
-    els.toggleIconEnd.textContent = "☼"
+    els.toggleIconStart.textContent = ""
+    els.toggleIconEnd.textContent = ""
   }
   els.toggle.setAttribute("aria-pressed", sessionOn ? "true" : "false")
   els.toggle.disabled = capabilityFor(RUNTIME, mode) === "unsupported" && !sessionOn
@@ -451,6 +491,7 @@ function paint() {
   els.pause.disabled = false
   els.stage.dataset.elapsedMs = String(timer?.elapsedMs ?? 0)
   paintStatus()
+  ensureTitleLoop()
   syncSurfaceVisibility()
   paintModes()
   patchFidelitySelection(fidelity)
@@ -787,7 +828,7 @@ async function startSession() {
   if (mode === "screen") {
     pendingScreen = await preflightScreen()
     if (!pendingScreen) {
-      // Forced to Video by preflight; Keep tab awake stays usable.
+      // Forced to Video by preflight; Start stays usable.
       return
     }
   }

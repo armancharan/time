@@ -1,7 +1,7 @@
 """Custom rule: hermetic Playwright contract for the generated media path.
 
 Runs Playwright against a served web build that includes the WASM frame engine.
-Fails unless Keep tab awake yields a live <video> with a MediaStream srcObject.
+Fails unless Start yields a live <video> with a MediaStream srcObject.
 """
 
 load("@rules_shell//shell:sh_test.bzl", "sh_test")

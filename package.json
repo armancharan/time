@@ -1,16 +1,16 @@
 {
-  "name": "tabawake",
+  "name": "time",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "packageManager": "pnpm@9.15.0",
   "scripts": {
-    "build": "pnpm wasm:stage && pnpm --filter @tabawake/web build",
-    "dev": "pnpm wasm:stage && pnpm --filter @tabawake/web dev",
-    "preview": "pnpm --filter @tabawake/web preview",
-    "test": "pnpm --filter @tabawake/core test && pnpm wasm:stage && pnpm --filter @tabawake/web test",
-    "test:coverage": "pnpm --filter @tabawake/core test:coverage",
-    "test:e2e": "pnpm build && pnpm --filter @tabawake/e2e test",
+    "build": "pnpm wasm:stage && pnpm --filter @time/web build",
+    "dev": "pnpm wasm:stage && pnpm --filter @time/web dev",
+    "preview": "pnpm --filter @time/web preview",
+    "test": "pnpm --filter @time/core test && pnpm wasm:stage && pnpm --filter @time/web test",
+    "test:coverage": "pnpm --filter @time/core test:coverage",
+    "test:e2e": "pnpm build && pnpm --filter @time/e2e test",
     "wasm:stage": "tsx scripts/stage-wasm.ts"
   },
   "devDependencies": {

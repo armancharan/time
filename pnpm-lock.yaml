@@ -35,9 +35,9 @@ importers:
 
   apps/web:
     dependencies:
-      '@tabawake/core':
+      '@time/core':
         specifier: workspace:*
-        version: link:../../packages/tabawake_core
+        version: link:../../packages/time_core
     devDependencies:
       happy-dom:
         specifier: ^20.11.2
@@ -58,7 +58,7 @@ importers:
         specifier: ^1.51.0
         version: 1.62.1
 
-  packages/tabawake_core:
+  packages/time_core:
     devDependencies:
       '@vitest/coverage-v8':
         specifier: 3.2.7

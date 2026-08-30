@@ -29,8 +29,8 @@ find_node() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "${SCRIPT_DIR}/src/session.node-test.ts" ]]; then
   ROOT="${SCRIPT_DIR}"
-elif [[ -n "${TEST_SRCDIR:-}" && -f "${TEST_SRCDIR}/_main/packages/tabawake_core/src/session.node-test.ts" ]]; then
-  ROOT="${TEST_SRCDIR}/_main/packages/tabawake_core"
+elif [[ -n "${TEST_SRCDIR:-}" && -f "${TEST_SRCDIR}/_main/packages/time_core/src/session.node-test.ts" ]]; then
+  ROOT="${TEST_SRCDIR}/_main/packages/time_core"
 else
   ROOT="${SCRIPT_DIR}"
 fi
@@ -38,7 +38,7 @@ fi
 cd "${ROOT}"
 
 if ! NODE_BIN="$(find_node)"; then
-  echo "node is required for //packages/tabawake_core:tests" >&2
+  echo "node is required for //packages/time_core:tests" >&2
   exit 1
 fi
 

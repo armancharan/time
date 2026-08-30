@@ -16,7 +16,7 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
     "paths": {
-      "@tabawake/core": ["../../packages/tabawake_core/src/index.ts"]
+      "@time/core": ["../../packages/time_core/src/index.ts"]
     }
   },
   "include": ["src"],

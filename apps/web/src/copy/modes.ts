@@ -1,4 +1,4 @@
-import type { AppRuntime, KeepAwakeMode } from "@tabawake/core"
+import type { AppRuntime, KeepAwakeMode } from "@time/core"
 
 export const SCREEN_WAKE_LOCK_MDN =
   "https://developer.mozilla.org/en-US/docs/Web/API/Screen_Wake_Lock_API"

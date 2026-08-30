@@ -1,4 +1,4 @@
-//! Procedural RGBA frame engine for the tabawake generated-media path.
+//! Procedural RGBA frame engine for the time generated-media path.
 //!
 //! Pure rendering lives here so host `rust_test` targets stay free of the
 //! browser; `wasm_bindgen` exports wrap the same functions for the web driver.

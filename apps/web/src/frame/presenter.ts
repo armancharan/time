@@ -180,7 +180,7 @@ export async function createTimerController(
       origin = performance.now() - elapsedMs
       lastPaintAt = 0
       if (host instanceof HTMLVideoElement) {
-        // Non-blocking: a hung play() must not freeze Keep tab awake / Resume.
+        // Non-blocking: a hung play() must not freeze Start / Resume.
         void host.play().catch(() => {
           /* ignore */
         })

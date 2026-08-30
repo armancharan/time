@@ -24,22 +24,60 @@ async function stubWakeLock(page: Page) {
   })
 }
 
-test.describe("tabawake", () => {
+test.describe("time", () => {
   test("brand and timer idle", async ({ page }) => {
     await stubWakeLock(page)
     await page.goto("/")
-    await expect(page.getByRole("heading", { name: "tabawake" })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "time" })).toBeVisible()
+    await expect(page.getByText("a monument,")).toBeVisible()
+    await expect(page.getByText("to the concept,")).toBeVisible()
+    await expect(page.getByText("that is")).toBeVisible()
+    await expect(page).toHaveTitle("time")
     await expect(page.getByTestId("status")).toContainText("Ready")
     await expect(page.getByRole("radio", { name: /Video/i })).toBeChecked()
     await expect(page.getByRole("radio", { name: /^Seconds/ })).toBeChecked()
     await expect(page.getByTestId("preview-video")).toBeVisible()
   })
 
+  test("document title tracks elapsed time", async ({ page }) => {
+    await stubWakeLock(page)
+    await page.goto("/")
+    await expect(page).toHaveTitle("time")
+
+    await page.getByRole("button", { name: "Start" }).click()
+    await expect(page.getByTestId("status")).toContainText("On", {
+      timeout: 15_000,
+    })
+    await expect(page).toHaveTitle(/^\d{2}:\d{2} · time$/)
+
+    const runningTitle = await page.title()
+    await expect
+      .poll(async () => page.title(), { timeout: 4_000 })
+      .not.toBe(runningTitle)
+
+    await page.getByRole("button", { name: "Pause" }).click()
+    await expect(page.getByTestId("status")).toContainText("Paused")
+    const pausedTitle = await page.title()
+    expect(pausedTitle).toMatch(/^\d{2}:\d{2} · time$/)
+    await page.waitForTimeout(1_200)
+    expect(await page.title()).toBe(pausedTitle)
+
+    await page.getByRole("button", { name: "Reset" }).click()
+    await expect(page).toHaveTitle("time")
+
+    await page.getByRole("radio", { name: /Milliseconds/i }).click()
+    await page.getByRole("button", { name: "Start" }).click()
+    await expect(page.getByTestId("status")).toContainText("On", {
+      timeout: 15_000,
+    })
+    await expect(page).toHaveTitle(/^\d{2}:\d{2}\.\d{3} · time$/)
+  })
+
   test("play pause stop then Screen ↔ Video", async ({ page }) => {
     await stubWakeLock(page)
     await page.goto("/")
 
-    await page.getByRole("button", { name: "Keep tab awake" }).click()
+    await page.getByRole("button", { name: "Start" }).click()
     await expect(page.getByTestId("status")).toContainText("On", {
       timeout: 15_000,
     })
@@ -79,10 +117,10 @@ test.describe("tabawake", () => {
     await expect(page.getByRole("radio", { name: /Screen/i })).toBeEnabled()
   })
 
-  test("swap Screen ↔ Video while Keep tab awake is on", async ({ page }) => {
+  test("swap Screen ↔ Video while Start is on", async ({ page }) => {
     await stubWakeLock(page)
     await page.goto("/")
-    await page.getByRole("button", { name: "Keep tab awake" }).click()
+    await page.getByRole("button", { name: "Start" }).click()
     await expect(page.getByTestId("status")).toContainText("On · Video", {
       timeout: 15_000,
     })

@@ -1,5 +1,5 @@
 /**
- * Session state machine for tabawake.
+ * Session state machine for time.
  *
  * Pure domain — no DOM. Drivers and UI sit outside this package so unit tests
  * stay hermetic and employers can read the lifecycle in one file.

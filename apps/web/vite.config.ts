@@ -18,7 +18,7 @@ export default defineConfig({
   publicDir: "public",
   resolve: {
     alias: {
-      "@tabawake/core": resolve(rootDir, "../../packages/tabawake_core/src"),
+      "@time/core": resolve(rootDir, "../../packages/time_core/src"),
     },
   },
   root: ".",

@@ -2,7 +2,7 @@
 name = "frame_engine"
 version = "0.1.0"
 edition = "2021"
-description = "Procedural RGBA frame generator for tabawake media demo"
+description = "Procedural RGBA frame generator for the time media path"
 license = "MIT"
 publish = false
 

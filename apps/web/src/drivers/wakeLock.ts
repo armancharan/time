@@ -1,4 +1,4 @@
-import type { AppRuntime, StopReason } from "@tabawake/core"
+import type { AppRuntime, StopReason } from "@time/core"
 
 export interface DriverSession {
   stop: (reason: StopReason) => Promise<void>

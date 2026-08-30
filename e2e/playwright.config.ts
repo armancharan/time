@@ -18,7 +18,7 @@ export default defineConfig({
     video: "off",
   },
   webServer: {
-    command: "pnpm --filter @tabawake/web preview --host 127.0.0.1 --port 4173",
+    command: "pnpm --filter @time/web preview --host 127.0.0.1 --port 4173",
     cwd: "..",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

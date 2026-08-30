@@ -24,7 +24,7 @@ jobs:
 
       - name: Rust + core (Bazel)
         run: |
-          bazelisk test //crates/frame_engine:frame_engine_test //packages/tabawake_core:tests
+          bazelisk test //crates/frame_engine:frame_engine_test //packages/time_core:tests
           bazelisk build //crates/frame_engine:frame_engine_web
 
   node:
@@ -59,7 +59,7 @@ jobs:
         run: pnpm build
 
       - name: Install Playwright Chromium
-        run: pnpm --filter @tabawake/e2e exec playwright install --with-deps chromium
+        run: pnpm --filter @time/e2e exec playwright install --with-deps chromium
 
       - name: Media stream e2e
         run: pnpm test:e2e

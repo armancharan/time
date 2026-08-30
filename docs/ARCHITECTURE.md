@@ -1,13 +1,14 @@
 # Architecture
 
-tabawake is a portfolio systems demo: honest web keep-awake plus an artisan
-Rust→WASM→`<video>` media pipeline, packaged with Bazel custom rules.
+time is a work timer: glanceable elapsed time, optional local session log,
+and honest web stay-awake plus an artisan Rust→WASM→`<video>` media pipeline,
+packaged with Bazel custom rules. Ancestry is [tabawake](https://github.com/armancharan/tabawake).
 
 ## Runtime graph
 
 ```text
 UI (apps/web)
-  → tabawake_core session state machine
+  → time_core session state machine
     → capability adapter / drivers
         → WakeLockDriver          (navigator.wakeLock)
         → GeneratedMediaDriver   (Rust WASM frames → MediaStream → <video>)
@@ -41,7 +42,7 @@ pnpm wasm:stage   # → apps/web/src/generated/frame_engine.js + frame_engine_bg
 ### `media_stream_e2e` (`tools/rules/media_stream_e2e.bzl`)
 
 Hermetic-ish Playwright contract: build web, serve preview, assert that
-**Keep tab awake** in `generated` mode attaches a `MediaStream` to `<video>`.
+**Start** in `generated` mode attaches a `MediaStream` to `<video>`.
 
 ```text
 bazelisk test //e2e:media_stream_e2e
@@ -49,7 +50,7 @@ bazelisk test //e2e:media_stream_e2e
 
 (Requires local `pnpm` + Chromium; CI installs both.)
 
-## Domain (`packages/tabawake_core`)
+## Domain (`packages/time_core`)
 
 States: `idle → armed → active → paused → error`
 
@@ -57,7 +58,7 @@ Modes: `screen | generated | system | presence`
 
 Pure TS. Vitest covers legal/illegal transitions for local DX; Bazel runs the
 same behaviours via Node 22 `--experimental-strip-types` + `node:test`
-(`src/session.node-test.ts`) so `//packages/tabawake_core:tests` stays free of
+(`src/session.node-test.ts`) so `//packages/time_core:tests` stays free of
 a pnpm sandbox.
 
 ## Frame engine (`crates/frame_engine`)
@@ -80,6 +81,11 @@ Polymorphic frame pipeline (`apps/web/src/frame`):
 
 Screen stay-awake uses the Wake Lock API beside the canvas preview.
 Video stay-awake uses the playing `<video>` MediaStream.
+
+The document title mirrors the clock (`MM:SS` / `MM:SS.mmm · time`) by
+polling `elapsedMs` on an interval, so the tab label still advances when rAF
+is background-throttled. Idle and reset restore `time`.
+
 ## Pins
 
 | Tool | Version |

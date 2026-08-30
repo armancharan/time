@@ -58,7 +58,7 @@ ROOT="$(resolve_root)"
 cd "${ROOT}"
 
 if [[ ! -f MODULE.bazel ]]; then
-  echo "Could not resolve tabawake workspace root (got ${ROOT})" >&2
+  echo "Could not resolve time workspace root (got ${ROOT})" >&2
   exit 1
 fi
 
@@ -73,6 +73,6 @@ fi
 
 "${PNPM_BIN}" wasm:stage
 
-"${PNPM_BIN}" --filter @tabawake/web build
-"${PNPM_BIN}" --filter @tabawake/e2e exec playwright install chromium
-"${PNPM_BIN}" --filter @tabawake/e2e test
+"${PNPM_BIN}" --filter @time/web build
+"${PNPM_BIN}" --filter @time/e2e exec playwright install chromium
+"${PNPM_BIN}" --filter @time/e2e test

@@ -1,8 +1,8 @@
-"""tabawake — Bazel-first monorepo for a portfolio keep-awake systems demo."""
+"""time — work timer with honest web stay-awake and a Rust/WASM clock."""
 
 module(
-    name = "tabawake",
-    version = "0.1.0",
+    name = "time",
+    version = "1.0.0",
 )
 
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
