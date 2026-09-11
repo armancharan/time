@@ -1,12 +1,16 @@
 export {
+  addSegment,
   appendRecord,
   clearRecords,
   emptyLog,
   removeRecord,
   setLogEnabled,
+  upsertRecord,
   type SessionFidelity,
+  type SessionKind,
   type SessionLog,
   type SessionRecord,
+  type SessionSegment,
 } from "./history"
 export {
   capabilityFor,

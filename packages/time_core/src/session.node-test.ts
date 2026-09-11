@@ -46,8 +46,22 @@ describe("reduceSession", () => {
     snap = reduceSession(snap, { type: "PAUSE", reason: "visibility_loss" })
     assert.equal(snap.state, "paused")
     assert.equal(snap.lastReason, "visibility_loss")
-    snap = reduceSession(snap, { type: "RESUME" })
+    assert.equal(snap.startedAt, 10)
+    snap = reduceSession(snap, { type: "RESUME" }, 20)
     assert.equal(snap.state, "active")
+    assert.equal(snap.startedAt, 10)
+  })
+
+  it("closes a tracked segment on pause and opens a new one on resume", () => {
+    let snap: SessionSnapshot = initialSession()
+    snap = reduceSession(snap, { type: "ARM", mode: "screen" })
+    snap = reduceSession(snap, { type: "START" }, 10)
+    snap = reduceSession(snap, { type: "PAUSE", closeSegment: true }, 20)
+    assert.equal(snap.state, "paused")
+    assert.equal(snap.startedAt, null)
+    snap = reduceSession(snap, { type: "RESUME" }, 30)
+    assert.equal(snap.state, "active")
+    assert.equal(snap.startedAt, 30)
   })
 
   it("stops back to idle", () => {

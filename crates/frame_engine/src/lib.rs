@@ -69,6 +69,12 @@ const COLON_GLYPH: [u8; 7] = [0b00000, 0b00100, 0b00100, 0b00000, 0b00100, 0b001
 /// Period `.` as a 5×7 glyph (bottom-center square).
 const PERIOD_GLYPH: [u8; 7] = [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00100, 0b00100];
 
+/// Hours wrap here so the glyph row stays at most four hour digits.
+const HOUR_WRAP: u32 = 1111;
+
+/// `HHHH:MM:SS.mmm` is the longest row (four unpadded hour digits).
+const MAX_GLYPHS: usize = 14;
+
 /// Render a black timer on a white background into a newly allocated RGBA8 buffer.
 ///
 /// Seconds fidelity is `H:MM:SS`; milliseconds is `H:MM:SS.mmm`.
@@ -115,18 +121,13 @@ pub fn paint_frame(out: &mut [u8], header: FrameHeader) {
     }
 
     let total_secs = header.t_ms / 1000;
-    let hours = (total_secs / 3600) % 100;
+    let hours = (total_secs / 3600) % HOUR_WRAP;
     let mins = (total_secs / 60) % 60;
     let secs = total_secs % 60;
     let millis = header.t_ms % 1000;
-    let mut chars = [TimerGlyph::Colon; 12];
+    let mut chars = [TimerGlyph::Colon; MAX_GLYPHS];
     let mut i = 0usize;
-    if hours >= 10 {
-        chars[i] = TimerGlyph::Digit((hours / 10) as u8);
-        i += 1;
-    }
-    chars[i] = TimerGlyph::Digit((hours % 10) as u8);
-    i += 1;
+    push_hours(hours, &mut chars, &mut i);
     chars[i] = TimerGlyph::Colon;
     i += 1;
     chars[i] = TimerGlyph::Digit((mins / 10) as u8);
@@ -181,6 +182,21 @@ enum TimerGlyph {
     Digit(u8),
     Colon,
     Period,
+}
+
+fn push_hours(hours: u32, chars: &mut [TimerGlyph; MAX_GLYPHS], i: &mut usize) {
+    if hours >= 1000 {
+        chars[*i] = TimerGlyph::Digit((hours / 1000) as u8);
+        *i += 1;
+    }
+    if hours >= 100 {
+        chars[*i] = TimerGlyph::Digit(((hours / 100) % 10) as u8);
+        *i += 1;
+    }
+    chars[*i] = TimerGlyph::Digit(((hours / 10) % 10) as u8);
+    *i += 1;
+    chars[*i] = TimerGlyph::Digit((hours % 10) as u8);
+    *i += 1;
 }
 
 fn glyph_rows(glyph: TimerGlyph) -> [u8; 7] {
@@ -288,6 +304,18 @@ mod tests {
         let under = render_frame(160, 100, 3_599_000);
         let over = render_frame(160, 100, 3_600_000);
         assert_ne!(under, over);
+    }
+
+    #[test]
+    fn hours_wrap_at_1111() {
+        let hour = 3_600_000;
+        let at_100 = render_frame(320, 200, 100 * hour);
+        let at_zero = render_frame(320, 200, 0);
+        assert_ne!(at_100, at_zero);
+        let at_1110 = render_frame(320, 200, 1110 * hour);
+        let at_1111 = render_frame(320, 200, 1111 * hour);
+        assert_ne!(at_1110, at_1111);
+        assert_eq!(at_1111, at_zero);
     }
 
     #[test]

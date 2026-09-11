@@ -120,4 +120,60 @@ describe("createTimerController", () => {
 
     timer.dispose()
   })
+
+  it("countdown paints remaining time and exhausts at zero", async () => {
+    const canvas = document.createElement("canvas")
+    vi.spyOn(canvas, "getContext").mockReturnValue({
+      putImageData: vi.fn(),
+      clearRect: vi.fn(),
+      drawImage: vi.fn(),
+    } as unknown as CanvasRenderingContext2D)
+
+    const engine = mockEngine()
+    const onExhausted = vi.fn()
+    const timer = await createTimerController(canvas, {
+      engine,
+      initialMs: 2_000,
+      countdownFromMs: 10_000,
+      onExhausted,
+    })
+    expect(timer.elapsedMs).toBe(2_000)
+    expect(timer.displayedMs).toBe(8_000)
+    expect(engine.renderFrame).toHaveBeenLastCalledWith(320, 200, 8_000, 0)
+
+    await timer.play(10_000)
+    expect(timer.playing).toBe(false)
+    expect(timer.displayedMs).toBe(0)
+    expect(onExhausted).toHaveBeenCalledTimes(1)
+
+    timer.dispose()
+  })
+
+  it("count up to paints elapsed and exhausts at the duration", async () => {
+    const canvas = document.createElement("canvas")
+    vi.spyOn(canvas, "getContext").mockReturnValue({
+      putImageData: vi.fn(),
+      clearRect: vi.fn(),
+      drawImage: vi.fn(),
+    } as unknown as CanvasRenderingContext2D)
+
+    const engine = mockEngine()
+    const onExhausted = vi.fn()
+    const timer = await createTimerController(canvas, {
+      engine,
+      initialMs: 2_000,
+      countUpToMs: 10_000,
+      onExhausted,
+    })
+    expect(timer.elapsedMs).toBe(2_000)
+    expect(timer.displayedMs).toBe(2_000)
+    expect(engine.renderFrame).toHaveBeenLastCalledWith(320, 200, 2_000, 0)
+
+    await timer.play(10_000)
+    expect(timer.playing).toBe(false)
+    expect(timer.displayedMs).toBe(10_000)
+    expect(onExhausted).toHaveBeenCalledTimes(1)
+
+    timer.dispose()
+  })
 })

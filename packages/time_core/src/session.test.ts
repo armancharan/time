@@ -41,8 +41,22 @@ describe("reduceSession", () => {
     snap = reduceSession(snap, { type: "PAUSE", reason: "visibility_loss" })
     expect(snap.state).toBe("paused")
     expect(snap.lastReason).toBe("visibility_loss")
-    snap = reduceSession(snap, { type: "RESUME" })
+    expect(snap.startedAt).toBe(10)
+    snap = reduceSession(snap, { type: "RESUME" }, 20)
     expect(snap.state).toBe("active")
+    expect(snap.startedAt).toBe(10)
+  })
+
+  it("closes a tracked segment on pause and opens a new one on resume", () => {
+    let snap: SessionSnapshot = initialSession()
+    snap = reduceSession(snap, { type: "ARM", mode: "screen" })
+    snap = reduceSession(snap, { type: "START" }, 10)
+    snap = reduceSession(snap, { type: "PAUSE", closeSegment: true }, 20)
+    expect(snap.state).toBe("paused")
+    expect(snap.startedAt).toBeNull()
+    snap = reduceSession(snap, { type: "RESUME" }, 30)
+    expect(snap.state).toBe("active")
+    expect(snap.startedAt).toBe(30)
   })
 
   it("stops back to idle", () => {

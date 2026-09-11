@@ -26,7 +26,7 @@ export type StopReason =
 export type SessionEvent =
   | { type: "ARM"; mode: KeepAwakeMode }
   | { type: "START" }
-  | { type: "PAUSE"; reason?: StopReason }
+  | { type: "PAUSE"; reason?: StopReason; closeSegment?: boolean }
   | { type: "RESUME" }
   | { type: "STOP"; reason: StopReason }
   | { type: "FAIL"; reason: StopReason; message?: string }
@@ -84,6 +84,7 @@ export function reduceSession(
         ...snap,
         state: "paused",
         lastReason: event.reason ?? "paused",
+        startedAt: event.closeSegment ? null : snap.startedAt,
       }
     case "RESUME":
       if (snap.state !== "paused") return snap
@@ -92,6 +93,7 @@ export function reduceSession(
         state: "active",
         lastReason: null,
         message: null,
+        startedAt: snap.startedAt ?? now,
       }
     case "STOP":
       if (snap.state === "idle") return snap

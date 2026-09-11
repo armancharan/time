@@ -16,8 +16,10 @@ export type TimerFidelity = "seconds" | "milliseconds"
 
 export type TimerController = {
   readonly sink: FrameSink
-  /** Elapsed ms currently shown (frozen while paused / idle). */
+  /** Elapsed ms since play origin (work time). */
   readonly elapsedMs: number
+  /** Time painted on the clock — remaining when counting down. */
+  readonly displayedMs: number
   /** True while the clock is advancing. */
   readonly playing: boolean
   /** True while frozen but still holding a video stream heartbeat. */
@@ -32,6 +34,10 @@ export type TimerController = {
   pause: () => number
   /** Stop the clock and show 00:00 (keeps the sink mounted). */
   reset: () => void
+  /** Count down from `fromMs`, or `null` to count up. */
+  setCountdownFrom: (fromMs: number | null) => void
+  /** Stop when elapsed reaches `toMs`, or `null` to run open-ended. */
+  setCountUpTo: (toMs: number | null) => void
   /** Switch MM:SS / MM:SS.mmm without remounting the sink. */
   setFidelity: (next: TimerFidelity) => void
   /** Tear down the sink entirely. */
@@ -53,11 +59,27 @@ function paintHz(fidelity: TimerFidelity): number {
 
 export async function createTimerController(
   host: FrameHost,
-  opts?: { engine?: FrameEngine; initialMs?: number; fidelity?: TimerFidelity },
+  opts?: {
+    engine?: FrameEngine
+    initialMs?: number
+    fidelity?: TimerFidelity
+    countdownFromMs?: number | null
+    countUpToMs?: number | null
+    onExhausted?: () => void
+  },
 ): Promise<TimerController> {
   const engine = opts?.engine ?? (await loadFrameEngine())
   const sink = createFrameSink(host)
   let fidelity: TimerFidelity = opts?.fidelity ?? "seconds"
+  let countdownFromMs: number | null = opts?.countdownFromMs ?? null
+  let countUpToMs: number | null = opts?.countUpToMs ?? null
+  const onExhausted = opts?.onExhausted
+
+  const limitReached = (elapsed: number): boolean => {
+    if (countdownFromMs !== null && elapsed >= countdownFromMs) return true
+    if (countUpToMs !== null && elapsed >= countUpToMs) return true
+    return false
+  }
 
   if (host instanceof HTMLCanvasElement) {
     host.width = WIDTH
@@ -75,17 +97,29 @@ export async function createTimerController(
   /** performance.now() origin such that elapsed = now - origin while playing. */
   let origin = 0
 
+  const shownFromElapsed = (elapsed: number): number => {
+    const t = elapsed >>> 0
+    if (countdownFromMs === null) return t
+    return Math.max(0, countdownFromMs - t) >>> 0
+  }
+
+  const liveElapsed = (): number => {
+    if (playing) return Math.max(0, performance.now() - origin) >>> 0
+    return elapsedMs
+  }
+
   const paint = (tMs: number) => {
     if (disposed) return
     elapsedMs = tMs >>> 0
+    const shown = shownFromElapsed(elapsedMs)
     const bytes = engine.renderFrame(
       WIDTH,
       HEIGHT,
-      elapsedMs,
+      shown,
       fidelityCode(fidelity),
     )
     void Promise.resolve(
-      sink.present({ width: WIDTH, height: HEIGHT, bytes, tMs: elapsedMs }),
+      sink.present({ width: WIDTH, height: HEIGHT, bytes, tMs: shown }),
     ).catch(() => {
       /* disposing */
     })
@@ -97,13 +131,25 @@ export async function createTimerController(
     loopGen += 1
   }
 
+  const exhaust = () => {
+    playing = false
+    paused = false
+    cancelLoop()
+    onExhausted?.()
+  }
+
   const runAdvanceLoop = () => {
     const gen = loopGen
     const tick = (now: number) => {
       if (disposed || !playing || gen !== loopGen) return
       if (now - lastPaintAt >= 1000 / paintHz(fidelity)) {
         lastPaintAt = now
-        paint(Math.max(0, now - origin))
+        const next = Math.max(0, now - origin)
+        paint(next)
+        if (limitReached(next) && playing && gen === loopGen) {
+          exhaust()
+          return
+        }
       }
       if (disposed || !playing || gen !== loopGen) return
       raf = requestAnimationFrame(tick)
@@ -150,10 +196,10 @@ export async function createTimerController(
     sink,
     get elapsedMs() {
       // Live while playing so mechanism handoffs do not jump backward.
-      if (playing) {
-        return Math.max(0, performance.now() - origin) >>> 0
-      }
-      return elapsedMs
+      return liveElapsed()
+    },
+    get displayedMs() {
+      return shownFromElapsed(liveElapsed())
     },
     get playing() {
       return playing
@@ -186,6 +232,10 @@ export async function createTimerController(
         })
       }
       paint(elapsedMs)
+      if (limitReached(elapsedMs)) {
+        exhaust()
+        return
+      }
       runAdvanceLoop()
     },
     pause() {
@@ -203,6 +253,15 @@ export async function createTimerController(
         runHoldLoop(elapsedMs)
       }
       return elapsedMs
+    },
+    setCountdownFrom(fromMs) {
+      if (disposed) return
+      countdownFromMs = fromMs
+      paint(liveElapsed())
+    },
+    setCountUpTo(toMs) {
+      if (disposed) return
+      countUpToMs = toMs
     },
     reset() {
       if (disposed) return

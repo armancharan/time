@@ -63,7 +63,7 @@ a pnpm sandbox.
 
 ## Frame engine (`crates/frame_engine`)
 
-`render_frame(width, height, t_ms) -> RGBA8` (`H:MM:SS`); WASM `renderFrame` also takes a fidelity flag for `H:MM:SS.mmm`. Hours wrap at 100.
+`render_frame(width, height, t_ms) -> RGBA8` (`H:MM:SS`); WASM `renderFrame` also takes a fidelity flag for `H:MM:SS.mmm`. Hours wrap at 1111.
 
 Host `rust_test` covers buffer sizing and motion. WASM exports
 `renderFrame` / `frameByteLen` for the browser driver.

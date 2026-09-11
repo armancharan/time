@@ -1,5 +1,6 @@
 import "./styles/main.css"
 import {
+  addSegment,
   appendRecord,
   capabilityFor,
   initialSession,
@@ -8,13 +9,29 @@ import {
   setLogEnabled,
   clearRecords,
   removeRecord,
+  upsertRecord,
   type KeepAwakeMode,
+  type SessionKind,
   type SessionLog,
+  type SessionRecord,
   type SessionSnapshot,
   type StopReason,
 } from "@time/core"
 import { modeCopy } from "./copy/modes"
-import { documentTitleFor, formatElapsed } from "./drivers/documentTitle"
+import { documentTitleFor, formatLimitCaption } from "./drivers/documentTitle"
+import {
+  formatSessionOpen,
+  formatSessionSpan,
+  formatSessionTimes,
+  sessionKindMark,
+} from "./drivers/sessionSpan"
+import { loadKeepAwake, saveKeepAwake } from "./drivers/keepAwake"
+import {
+  loadCountdownFrom,
+  parseCountdownFrom,
+  saveCountdownFrom,
+} from "./drivers/countdownFrom"
+import { loadRunUntil, saveRunUntil } from "./drivers/runUntil"
 import { loadSessionLog, saveSessionLog } from "./drivers/sessionLog"
 import { screenOptionState } from "./drivers/screenOption"
 import {
@@ -55,6 +72,17 @@ let screenFailure: WakeLockFailureKind | null = null
 /** Interval that polls elapsed time into `document.title` while the clock runs. */
 let titleLoop = 0
 let log: SessionLog = loadSessionLog()
+let keepAwake = loadKeepAwake()
+/** Skip remounting the history list when only the tracking switch moved. */
+let historyListKey = ""
+/** Elapsed ms already closed into History by Pause with tracker. */
+let trackedElapsedBase = 0
+let countdownFromMs: number | null = null
+let countUpToMs: number | null = null
+/** Start→Reset instance that nested stretches attach to. */
+let openRun: SessionRecord | null = null
+/** Wall-clock start of the current Start→Reset instance. */
+let instanceStartedAt: number | null = null
 
 const root = document.querySelector<HTMLDivElement>("#app")
 if (!root) throw new Error("#app missing")
@@ -87,18 +115,91 @@ root.innerHTML = `
           playsinline
           muted
         ></video>
-        <div class="actions">
-          <button class="primary" type="button" data-ref="toggle" aria-pressed="false">
-            <span class="btn-icon" aria-hidden="true" data-ref="toggle-icon-start"></span>
-            <span data-ref="toggle-label">Start</span>
-            <span class="btn-icon" aria-hidden="true" data-ref="toggle-icon-end"></span>
-          </button>
-          <button class="secondary" type="button" data-ref="pause" hidden>
-            <span class="btn-icon" aria-hidden="true" data-ref="pause-icon"></span>
-            <span data-ref="pause-label">Pause</span>
-          </button>
-        </div>
       </div>
+      <div class="actions">
+        <div class="action-group" data-ref="play-group">
+          <button class="primary" type="button" data-ref="play">
+            <span class="btn-icon" aria-hidden="true">▶</span>
+            <span data-ref="play-label">Start</span>
+          </button>
+          <div class="action-flyout">
+            <div class="start-flyout-rows">
+              <div class="countdown-row">
+                <button class="secondary" type="button" data-ref="countdown">
+                  Countdown from
+                </button>
+                <input
+                  class="countdown-input"
+                  data-ref="countdown-from"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  spellcheck="false"
+                  aria-label="Countdown duration"
+                  placeholder="00:00"
+                  value="${loadCountdownFrom()}"
+                />
+              </div>
+              <div class="countdown-row">
+                <button class="secondary" type="button" data-ref="run-until">
+                  Count up to
+                </button>
+                <input
+                  class="countdown-input"
+                  data-ref="run-until-at"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  spellcheck="false"
+                  aria-label="Count up to duration"
+                  placeholder="00:00"
+                  value="${loadRunUntil()}"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="action-group">
+          <button class="secondary" type="button" data-ref="pause" disabled>
+            <span class="btn-icon" aria-hidden="true">⏸</span>
+            Pause
+          </button>
+          <div class="action-flyout">
+            <div class="pause-track-stack">
+              <button
+                class="secondary"
+                type="button"
+                data-ref="pause-track"
+                disabled
+                aria-describedby="pause-track-hint"
+              >
+                <span class="btn-icon" aria-hidden="true">⏸</span>
+                Pause with tracker
+              </button>
+              <p
+                class="pause-track-hint"
+                id="pause-track-hint"
+                data-ref="pause-track-hint-wrap"
+                hidden
+              >
+                <button
+                  type="button"
+                  class="pause-track-hint-link"
+                  data-ref="pause-track-hint"
+                >
+                  Enable <span class="pause-track-hint-slot">History</span>
+                </button>
+                to record with trackers
+              </p>
+            </div>
+          </div>
+        </div>
+        <button class="secondary" type="button" data-ref="reset" disabled>
+          <span class="btn-icon" aria-hidden="true">↺</span>
+          Reset
+        </button>
+      </div>
+      <p class="limit-note" data-ref="limit-note" hidden></p>
       <p
         class="stage-status sr-only"
         data-testid="status"
@@ -108,58 +209,91 @@ root.innerHTML = `
     </div>
 
     <div class="slots">
+      <div class="slots-stack">
       <section class="slot picker" data-slot="fidelity" aria-labelledby="fidelity-label">
-      <h2 class="picker-label" id="fidelity-label">Fidelity</h2>
-      <div
-        class="modes"
-        role="radiogroup"
-        aria-labelledby="fidelity-label"
-        data-ref="fidelity"
-      >
-        <label class="mode is-selected">
-          <span class="mode-control">
-            <input type="radio" name="fidelity" value="seconds" checked />
-            <span class="mode-mark" aria-hidden="true"></span>
-          </span>
-          <span class="mode-copy">
-            <span class="mode-title">Seconds</span>
-            <span class="mode-blurb">Timer as <code class="mode-code">H:MM:SS</code>.</span>
-          </span>
-        </label>
-        <label class="mode">
-          <span class="mode-control">
-            <input type="radio" name="fidelity" value="milliseconds" />
-            <span class="mode-mark" aria-hidden="true"></span>
-          </span>
-          <span class="mode-copy">
-            <span class="mode-title">Milliseconds</span>
-            <span class="mode-blurb">Timer as <code class="mode-code">H:MM:SS.mmm</code>.</span>
-          </span>
-        </label>
-      </div>
-      </section>
-
-      <section class="slot picker" data-slot="mechanism" aria-labelledby="mechanism-label">
-      <h2 class="picker-label" id="mechanism-label">Mechanism</h2>
-      <div
-        class="modes"
-        role="radiogroup"
-        aria-labelledby="mechanism-label"
-        data-ref="modes"
-      ></div>
+        <div class="picker-head">
+          <h2 class="picker-label" id="fidelity-label">Fidelity</h2>
+          <div
+            class="modes"
+            role="radiogroup"
+            aria-labelledby="fidelity-label"
+            aria-describedby="fidelity-note"
+            data-ref="fidelity"
+          >
+            <label class="mode is-selected">
+              <span class="mode-control">
+                <input type="radio" name="fidelity" value="seconds" checked />
+                <span class="mode-mark" aria-hidden="true"></span>
+              </span>
+              <span class="mode-title">Seconds</span>
+            </label>
+            <label class="mode">
+              <span class="mode-control">
+                <input type="radio" name="fidelity" value="milliseconds" />
+                <span class="mode-mark" aria-hidden="true"></span>
+              </span>
+              <span class="mode-title">Milliseconds</span>
+            </label>
+          </div>
+        </div>
+        <p class="picker-note" id="fidelity-note" data-ref="fidelity-note">
+          Timer as <code class="mode-code">H:MM:SS</code>.
+        </p>
       </section>
 
       <section class="slot picker" data-slot="history" aria-labelledby="history-label">
-        <h2 class="picker-label" id="history-label">History</h2>
+        <div class="picker-head">
+          <h2 class="picker-label" id="history-label">History</h2>
+          <button
+            type="button"
+            class="history-switch${log.enabled ? " is-on" : ""}"
+            role="switch"
+            aria-checked="${log.enabled ? "true" : "false"}"
+            data-ref="history-enabled"
+          >
+            <span class="history-switch-track" aria-hidden="true">
+              <span class="history-switch-knob"></span>
+            </span>
+            <span class="history-switch-title">Track sessions on this machine</span>
+          </button>
+        </div>
         <div data-ref="history"></div>
       </section>
+      </div>
 
-      <section class="slot slot-empty" data-slot="reserved-a" aria-hidden="true"></section>
+      <section class="slot picker" data-slot="mechanism" aria-labelledby="awake-label">
+        <div class="picker-head">
+          <h2 class="picker-label" id="awake-label">Keep screen awake</h2>
+          <button
+            type="button"
+            class="history-switch${keepAwake ? " is-on" : ""}"
+            role="switch"
+            aria-checked="${keepAwake ? "true" : "false"}"
+            aria-labelledby="awake-label"
+            data-ref="awake-enabled"
+          >
+            <span class="history-switch-track" aria-hidden="true">
+              <span class="history-switch-knob"></span>
+            </span>
+          </button>
+        </div>
+        <div class="mechanism-sub" data-ref="mechanism-sub"${keepAwake ? "" : " hidden"}>
+          <h3 class="picker-subhead" id="mechanism-label">Mechanism</h3>
+          <div
+            class="modes"
+            role="radiogroup"
+            aria-labelledby="mechanism-label"
+            data-ref="modes"
+          ></div>
+        </div>
+        <p class="picker-note" data-ref="awake-note"${keepAwake ? " hidden" : ""}>
+          The display may sleep.
+        </p>
+      </section>
     </div>
 
     <footer class="colophon">
       <p class="dedication">A product of dedication.</p>
-      <p class="lineage">from tabawake</p>
       <a
         class="home-link"
         href="https://armancharan.com"
@@ -172,26 +306,57 @@ root.innerHTML = `
 const els = {
   modes: root.querySelector<HTMLDivElement>("[data-ref=modes]")!,
   fidelity: root.querySelector<HTMLDivElement>("[data-ref=fidelity]")!,
-  toggle: root.querySelector<HTMLButtonElement>("[data-ref=toggle]")!,
-  toggleLabel: root.querySelector<HTMLSpanElement>("[data-ref=toggle-label]")!,
-  toggleIconStart: root.querySelector<HTMLSpanElement>(
-    "[data-ref=toggle-icon-start]",
+  play: root.querySelector<HTMLButtonElement>("[data-ref=play]")!,
+  playGroup: root.querySelector<HTMLDivElement>("[data-ref=play-group]")!,
+  playLabel: root.querySelector<HTMLSpanElement>("[data-ref=play-label]")!,
+  countdown: root.querySelector<HTMLButtonElement>("[data-ref=countdown]")!,
+  countdownFrom: root.querySelector<HTMLInputElement>(
+    "[data-ref=countdown-from]",
   )!,
-  toggleIconEnd: root.querySelector<HTMLSpanElement>(
-    "[data-ref=toggle-icon-end]",
+  runUntil: root.querySelector<HTMLButtonElement>("[data-ref=run-until]")!,
+  runUntilAt: root.querySelector<HTMLInputElement>(
+    "[data-ref=run-until-at]",
   )!,
   pause: root.querySelector<HTMLButtonElement>("[data-ref=pause]")!,
-  pauseLabel: root.querySelector<HTMLSpanElement>("[data-ref=pause-label]")!,
-  pauseIcon: root.querySelector<HTMLSpanElement>("[data-ref=pause-icon]")!,
+  pauseTrack: root.querySelector<HTMLButtonElement>("[data-ref=pause-track]")!,
+  pauseElapsed: root.querySelector<HTMLParagraphElement>(
+    "[data-ref=pause-elapsed]",
+  )!,
+  pauseTrackHint: root.querySelector<HTMLButtonElement>(
+    "[data-ref=pause-track-hint]",
+  )!,
+  pauseTrackHintWrap: root.querySelector<HTMLParagraphElement>(
+    "[data-ref=pause-track-hint-wrap]",
+  )!,
+  reset: root.querySelector<HTMLButtonElement>("[data-ref=reset]")!,
+  limitNote: root.querySelector<HTMLParagraphElement>("[data-ref=limit-note]")!,
   status: root.querySelector<HTMLParagraphElement>("[data-ref=status]")!,
   stage: root.querySelector<HTMLDivElement>("[data-ref=stage]")!,
   canvas: root.querySelector<HTMLCanvasElement>("[data-ref=canvas]")!,
   video: root.querySelector<HTMLVideoElement>("[data-ref=video]")!,
   history: root.querySelector<HTMLDivElement>("[data-ref=history]")!,
+  historySwitch: root.querySelector<HTMLButtonElement>(
+    "[data-ref=history-enabled]",
+  )!,
+  fidelityNote: root.querySelector<HTMLParagraphElement>(
+    "[data-ref=fidelity-note]",
+  )!,
+  awakeSwitch: root.querySelector<HTMLButtonElement>(
+    "[data-ref=awake-enabled]",
+  )!,
+  mechanismSub: root.querySelector<HTMLDivElement>(
+    "[data-ref=mechanism-sub]",
+  )!,
+  awakeNote: root.querySelector<HTMLParagraphElement>("[data-ref=awake-note]")!,
+}
+
+function surfaceKind(): "canvas" | "video" {
+  if (!keepAwake) return "canvas"
+  return mode === "screen" ? "canvas" : "video"
 }
 
 function activeHost(): FrameHost {
-  return mode === "screen" ? els.canvas : els.video
+  return surfaceKind() === "canvas" ? els.canvas : els.video
 }
 
 function surfaceEl(kind: "canvas" | "video"): HTMLCanvasElement | HTMLVideoElement {
@@ -205,7 +370,7 @@ function clearSurfaceClasses(el: HTMLElement) {
 /** Show the active host; hide the other. No opacity animation. */
 function syncSurfaceVisibility() {
   const useCanvas =
-    (timer?.sink.kind ?? (mode === "screen" ? "canvas" : "video")) === "canvas"
+    (timer?.sink.kind ?? surfaceKind()) === "canvas"
   const active = useCanvas ? els.canvas : els.video
   const idle = useCanvas ? els.video : els.canvas
 
@@ -226,13 +391,23 @@ function commitSurface(incomingKind: "canvas" | "video") {
 }
 
 /** Move radio selection without rebuilding — avoids ○/● remount flicker. */
-function patchModeSelection(selected: KeepAwakeMode) {
+function patchModeSelection(selected: KeepAwakeMode, animate = false) {
   els.modes.querySelectorAll<HTMLLabelElement>("label.mode").forEach((label) => {
     const input = label.querySelector<HTMLInputElement>('input[name="mode"]')
     if (!input) return
     const on = input.value === selected
+    const was = label.classList.contains("is-selected")
     input.checked = on
     label.classList.toggle("is-selected", on)
+    if (!on) {
+      label.classList.remove("is-entering")
+      return
+    }
+    if (animate && !was) {
+      label.classList.remove("is-entering")
+      void label.offsetWidth
+      label.classList.add("is-entering")
+    }
   })
 }
 
@@ -244,6 +419,10 @@ function patchFidelitySelection(selected: TimerFidelity) {
     input.checked = on
     label.classList.toggle("is-selected", on)
   })
+  els.fidelityNote.innerHTML =
+    selected === "milliseconds"
+      ? `Timer as <code class="mode-code">H:MM:SS.mmm</code>.`
+      : `Timer as <code class="mode-code">H:MM:SS</code>.`
 }
 
 function onFidelityChange(next: TimerFidelity) {
@@ -261,22 +440,25 @@ function modeLabel(m: KeepAwakeMode | null): string {
 
 function statusLine(): string {
   const shown = mode
+  const mech = keepAwake ? ` · ${modeLabel(shown)}` : ""
+  const limit = limitCaption()
+  const cap = limit ? ` · ${limit}` : ""
   if (snap.state === "active") {
-    return `On · ${modeLabel(shown)}`
+    return `On${cap}${mech}`
   }
   if (snap.state === "paused") {
-    return `Paused · ${modeLabel(shown)}`
+    return `Paused${cap}${mech}`
   }
   if (snap.state === "error") {
     return snap.message ? `Couldn’t start — ${snap.message}` : "Couldn’t start"
   }
   if (snap.lastReason === "user") {
-    return `Reset · ${modeLabel(shown)}`
+    return `Reset${mech}`
   }
   if (snap.lastReason) {
-    return `Stopped · ${humanReason(snap.lastReason)} · ${modeLabel(shown)}`
+    return `Stopped · ${humanReason(snap.lastReason)}${mech}`
   }
-  return `Ready · ${modeLabel(shown)}`
+  return `Ready${mech}`
 }
 
 function humanReason(reason: StopReason): string {
@@ -453,40 +635,51 @@ function persistLog() {
   saveSessionLog(log)
 }
 
+function limitCaption(): string {
+  if (countdownFromMs !== null) {
+    return formatLimitCaption("countdown-from", countdownFromMs)
+  }
+  if (countUpToMs !== null) {
+    return formatLimitCaption("count-up-to", countUpToMs)
+  }
+  return ""
+}
+
+function paintLimitNote() {
+  const live = snap.state === "active" || snap.state === "paused"
+  const text = live ? limitCaption() : ""
+  els.limitNote.textContent = text
+  els.limitNote.hidden = !text
+}
+
 function paintStatus() {
   els.status.textContent = statusLine()
 }
 
 function paintHistory() {
-  const rows = log.records
-    .map((row) => {
-      const duration = formatElapsed(row.elapsedMs, row.fidelity)
-      return `<li class="history-row">
-        <span>${duration} · ${modeLabel(row.mode)}</span>
-        <button type="button" class="mode-retry" data-wipe-id="${row.id}">Wipe</button>
-      </li>`
-    })
+  els.historySwitch.classList.toggle("is-on", log.enabled)
+  els.historySwitch.setAttribute("aria-checked", log.enabled ? "true" : "false")
+  const visible = visibleHistory()
+  const listKey = visible.length
+    ? `${openRun?.id ?? ""}|${visible
+        .map((row) => `${row.id}:${row.segments.map((seg) => seg.id).join(",")}`)
+        .join("\0")}`
+    : `empty:${log.enabled}`
+  if (listKey === historyListKey && els.history.querySelector(".history-pane, .history-empty")) {
+    return
+  }
+  historyListKey = listKey
+  const rows = visible
+    .map((row) => historyItemHtml(row, openRun?.id === row.id))
     .join("")
-  const list = rows
-    ? `<ol class="history-list">${rows}</ol>
-       <button type="button" class="mode-retry" data-ref="history-wipe-all">Wipe all</button>`
-    : `<p class="slot-note">${log.enabled ? "No sessions yet." : "Tracking is off."}</p>`
-  els.history.innerHTML = `
-    <label class="history-enable">
-      <input type="checkbox" data-ref="history-enabled" ${log.enabled ? "checked" : ""} />
-      Track sessions on this machine
-    </label>
-    ${list}
-  `
-  els.history
-    .querySelector<HTMLInputElement>("[data-ref=history-enabled]")
-    ?.addEventListener("change", (event) => {
-      const box = event.currentTarget
-      if (!(box instanceof HTMLInputElement)) return
-      log = setLogEnabled(log, box.checked)
-      persistLog()
-      paintHistory()
-    })
+  els.history.innerHTML = rows
+    ? `<div class="history-pane">
+         <div class="history-scroller" data-ref="history-scroller" tabindex="0">
+           <ol class="history-list">${rows}</ol>
+         </div>
+       </div>
+       <button type="button" class="mode-retry history-clear" data-ref="history-wipe-all">Clear all</button>`
+    : `<p class="history-empty">${log.enabled ? "No sessions yet." : "Tracking is off."}</p>`
   els.history
     .querySelectorAll<HTMLButtonElement>("[data-wipe-id]")
     .forEach((btn) => {
@@ -505,11 +698,61 @@ function paintHistory() {
       persistLog()
       paintHistory()
     })
+  bindHistoryScrollFade(
+    els.history.querySelector<HTMLElement>("[data-ref=history-scroller]"),
+  )
+}
+
+function visibleHistory(): SessionRecord[] {
+  const rest = log.records.filter((row) => row.id !== openRun?.id)
+  if (openRun && openRun.segments.length > 0) return [openRun, ...rest]
+  return rest
+}
+
+function historyItemHtml(row: SessionRecord, live: boolean): string {
+  const mark = sessionKindMark(row.kind)
+  const when = live
+    ? formatSessionOpen(row.startedAt)
+    : formatSessionSpan(row.startedAt, row.endedAt)
+  const clear = live
+    ? ""
+    : `<button type="button" class="mode-retry history-clear" data-wipe-id="${row.id}" aria-label="Clear">×</button>`
+  const nested = row.segments.length
+    ? `<ol class="history-segments">${row.segments
+        .map(
+          (seg) =>
+            `<li class="history-segment">${formatSessionTimes(seg.startedAt, seg.endedAt)}</li>`,
+        )
+        .join("")}</ol>`
+    : ""
+  return `<li class="history-item" data-kind="${row.kind}">
+    <div class="history-row" data-kind="${row.kind}">
+      <span class="history-when">
+        <span class="history-kind" aria-label="${mark.label}">${mark.glyph}</span>
+        <span>${when}</span>
+      </span>
+      ${clear}
+    </div>
+    ${nested}
+  </li>`
+}
+
+function bindHistoryScrollFade(scroller: HTMLElement | null) {
+  if (!scroller) return
+  const pane = scroller.parentElement
+  if (!pane) return
+  const sync = () => {
+    const more =
+      scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop > 1
+    pane.classList.toggle("can-scroll-more", more)
+  }
+  scroller.addEventListener("scroll", sync, { passive: true })
+  sync()
 }
 
 function paintTitle() {
   const next = documentTitleFor({
-    elapsedMs: timer?.elapsedMs ?? 0,
+    elapsedMs: timer?.displayedMs ?? timer?.elapsedMs ?? 0,
     fidelity,
     showElapsed: snap.state === "active" || snap.state === "paused",
   })
@@ -546,27 +789,39 @@ function restartTitleLoop() {
 function paint() {
   const sessionOn = snap.state === "active" || snap.state === "paused"
   const isPaused = snap.state === "paused"
-  els.toggleLabel.textContent = sessionOn ? "Reset" : "Start"
-  if (sessionOn) {
-    els.toggleIconStart.textContent = "↺"
-    els.toggleIconEnd.textContent = ""
+  const isActive = snap.state === "active"
+  const canPlay =
+    isPaused ||
+    (!sessionOn && capabilityFor(RUNTIME, mode) !== "unsupported")
+  els.playLabel.textContent = isPaused ? "Resume" : "Start"
+  els.play.disabled = !canPlay
+  els.playGroup.classList.toggle("is-resume", isPaused)
+  if (isPaused) dismissStartFlyoutErrors()
+  els.pause.disabled = !isActive
+  els.pauseTrack.disabled = !isActive || !log.enabled
+  if (isActive && !log.enabled) {
+    els.pauseTrack.setAttribute("aria-describedby", "pause-track-hint")
   } else {
-    els.toggleIconStart.textContent = ""
-    els.toggleIconEnd.textContent = ""
+    els.pauseTrack.removeAttribute("aria-describedby")
   }
-  els.toggle.setAttribute("aria-pressed", sessionOn ? "true" : "false")
-  els.toggle.disabled = capabilityFor(RUNTIME, mode) === "unsupported" && !sessionOn
-  els.pause.hidden = !sessionOn
-  els.pauseLabel.textContent = isPaused ? "Resume" : "Pause"
-  els.pauseIcon.textContent = isPaused ? "▶" : "⏸"
-  els.pause.disabled = false
+  els.pauseTrackHintWrap.hidden = log.enabled || !isActive
+  els.reset.disabled = !sessionOn
   els.stage.dataset.elapsedMs = String(timer?.elapsedMs ?? 0)
   paintStatus()
+  paintLimitNote()
   ensureTitleLoop()
   paintHistory()
+  paintKeepAwake()
   syncSurfaceVisibility()
   paintModes()
   patchFidelitySelection(fidelity)
+}
+
+function paintKeepAwake() {
+  els.awakeSwitch.classList.toggle("is-on", keepAwake)
+  els.awakeSwitch.setAttribute("aria-checked", keepAwake ? "true" : "false")
+  els.mechanismSub.hidden = !keepAwake
+  els.awakeNote.hidden = keepAwake
 }
 
 type SurfaceResume = "idle" | "play" | "pause"
@@ -603,7 +858,7 @@ async function ensureSurface(opts?: {
   const gen = opts?.gen ?? surfaceGen
   const resume = opts?.resume ?? "idle"
   const host = activeHost()
-  const wantKind = mode === "screen" ? "canvas" : "video"
+  const wantKind = surfaceKind()
 
   if (!timer || timer.sink.kind !== wantKind) {
     const prev = timer
@@ -620,6 +875,9 @@ async function ensureSurface(opts?: {
     const next = await createTimerController(host, {
       initialMs: seedMs,
       fidelity,
+      countdownFromMs,
+      countUpToMs,
+      onExhausted: onCountdownExhausted,
     })
     if (gen !== surfaceGen) {
       next.dispose()
@@ -645,6 +903,8 @@ async function ensureSurface(opts?: {
       resume !== "idle" && prev
         ? prev.elapsedMs
         : (opts?.tMs ?? prev?.elapsedMs ?? 0)
+    next.setCountdownFrom(countdownFromMs)
+    next.setCountUpTo(countUpToMs)
     await applyResume(next, resume, handoffMs)
     if (gen !== surfaceGen) {
       next.dispose()
@@ -660,6 +920,8 @@ async function ensureSurface(opts?: {
   }
 
   syncSurfaceVisibility()
+  timer.setCountdownFrom(countdownFromMs)
+  timer.setCountUpTo(countUpToMs)
   await applyResume(timer, resume, opts?.tMs ?? timer.elapsedMs)
 }
 
@@ -746,6 +1008,12 @@ async function onModeChange(next: KeepAwakeMode) {
   if (next === mode) return
   if (capabilityFor(RUNTIME, next) === "unsupported") return
 
+  if (!keepAwake) {
+    mode = next
+    paint()
+    return
+  }
+
   const sessionLive = snap.state === "active" || snap.state === "paused"
   let pendingScreen: DriverSession | null = null
 
@@ -782,7 +1050,7 @@ async function onModeChange(next: KeepAwakeMode) {
     snap = reduceSession(snap, { type: "SWITCH_MODE", mode: next })
   }
   modesPaintLocked = true
-  patchModeSelection(next)
+  patchModeSelection(next, true)
   paint()
 
   try {
@@ -852,12 +1120,126 @@ async function onModeChange(next: KeepAwakeMode) {
   }
 }
 
-els.toggle.addEventListener("click", () => {
-  void onToggle()
+async function onKeepAwakeToggle() {
+  const next = !keepAwake
+  keepAwake = next
+  saveKeepAwake(keepAwake)
+  const sessionLive = snap.state === "active" || snap.state === "paused"
+  const resume: SurfaceResume = sessionLive
+    ? snap.state === "paused"
+      ? "pause"
+      : "play"
+    : "idle"
+  const gen = ++surfaceGen
+  paint()
+
+  if (!keepAwake) {
+    await stopDriverOnly("user")
+    if (gen !== surfaceGen) return
+    await ensureSurface({
+      tMs: sessionLive ? undefined : 0,
+      gen,
+      resume,
+    })
+    return
+  }
+
+  let pendingScreen: DriverSession | null = null
+  if (sessionLive && mode === "screen") {
+    pendingScreen = await preflightScreen()
+  }
+  if (gen !== surfaceGen) {
+    await pendingScreen?.stop("user")
+    return
+  }
+  await ensureSurface({
+    tMs: sessionLive ? undefined : 0,
+    gen,
+    resume,
+  })
+  if (gen !== surfaceGen) {
+    await pendingScreen?.stop("user")
+    return
+  }
+  if (!sessionLive) return
+  if (pendingScreen) {
+    wakeDriver = pendingScreen
+    clearScreenFailure()
+    return
+  }
+  await startDriverForCurrentMode()
+}
+
+els.play.addEventListener("click", () => {
+  if (snap.state === "paused") {
+    void onResume()
+    return
+  }
+  void startSession()
+})
+
+els.countdown.addEventListener("click", () => {
+  void startCountdownFrom()
+})
+
+els.runUntil.addEventListener("click", () => {
+  void startRunUntil()
+})
+
+for (const el of [els.countdownFrom, els.runUntilAt]) {
+  el.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return
+    event.preventDefault()
+    if (el === els.countdownFrom) void startCountdownFrom()
+    else void startRunUntil()
+  })
+  el.addEventListener("focus", () => {
+    const end = el.value.length
+    requestAnimationFrame(() => {
+      el.setSelectionRange(end, end)
+    })
+  })
+  el.addEventListener("input", () => {
+    el.removeAttribute("aria-invalid")
+  })
+}
+
+els.playGroup.addEventListener("mouseleave", () => {
+  dismissStartFlyoutErrors()
+})
+
+els.playGroup.addEventListener("focusout", (event) => {
+  const next = event.relatedTarget
+  if (next instanceof Node && els.playGroup.contains(next)) return
+  clearStartFlyoutErrors()
 })
 
 els.pause.addEventListener("click", () => {
-  void onPauseToggle()
+  void onPause()
+})
+
+els.pauseTrack.addEventListener("click", () => {
+  void onPauseWithTracker()
+})
+
+els.reset.addEventListener("click", () => {
+  void stopSession("user")
+})
+
+els.historySwitch.addEventListener("click", () => {
+  log = setLogEnabled(log, !log.enabled)
+  persistLog()
+  paint()
+})
+
+els.pauseTrackHint.addEventListener("click", () => {
+  log = setLogEnabled(log, true)
+  persistLog()
+  paint()
+})
+
+els.awakeSwitch.addEventListener("click", () => {
+  void onKeepAwakeToggle()
 })
 
 els.fidelity.querySelectorAll<HTMLInputElement>('input[name="fidelity"]').forEach((el) => {
@@ -868,36 +1250,159 @@ els.fidelity.querySelectorAll<HTMLInputElement>('input[name="fidelity"]').forEac
   })
 })
 
-async function onToggle() {
-  if (snap.state === "active" || snap.state === "paused") {
-    await stopSession("user")
-    return
-  }
-  await startSession()
+function onCountdownExhausted() {
+  void stopSession("user")
 }
 
-async function onPauseToggle() {
-  if (!timer) return
-  if (snap.state === "active") {
-    timer.pause()
-    snap = reduceSession(snap, { type: "PAUSE", reason: "paused" })
-    paint()
+function clearStartFlyoutErrors() {
+  els.countdownFrom.removeAttribute("aria-invalid")
+  els.runUntilAt.removeAttribute("aria-invalid")
+}
+
+function dismissStartFlyoutErrors() {
+  const active = document.activeElement
+  clearStartFlyoutErrors()
+  if (active === els.countdownFrom) els.countdownFrom.blur()
+  else if (active === els.runUntilAt) els.runUntilAt.blur()
+}
+
+function startCountdownFrom() {
+  if (snap.state === "paused" || snap.state === "active") return
+  const raw = els.countdownFrom.value
+  const ms = parseCountdownFrom(raw)
+  if (ms === null) {
+    els.countdownFrom.setAttribute("aria-invalid", "true")
+    els.countdownFrom.focus()
     return
   }
-  if (snap.state === "paused") {
-    snap = reduceSession(snap, { type: "RESUME" })
-    await timer.play(timer.elapsedMs)
-    paint()
+  els.countdownFrom.removeAttribute("aria-invalid")
+  saveCountdownFrom(raw.trim())
+  void startSession({ countdownFromMs: ms })
+}
+
+function startRunUntil() {
+  if (snap.state === "paused" || snap.state === "active") return
+  const raw = els.runUntilAt.value
+  const ms = parseCountdownFrom(raw)
+  if (ms === null) {
+    els.runUntilAt.setAttribute("aria-invalid", "true")
+    els.runUntilAt.focus()
+    return
+  }
+  els.runUntilAt.removeAttribute("aria-invalid")
+  saveRunUntil(raw.trim())
+  void startSession({ countUpToMs: ms })
+}
+
+async function onPause() {
+  if (!timer || snap.state !== "active") return
+  timer.pause()
+  snap = reduceSession(snap, { type: "PAUSE", reason: "paused" })
+  paint()
+}
+
+async function onPauseWithTracker() {
+  if (!timer || snap.state !== "active" || !log.enabled) return
+  closeStretch()
+  timer.pause()
+  snap = reduceSession(snap, {
+    type: "PAUSE",
+    reason: "paused",
+    closeSegment: true,
+  })
+  paint()
+}
+
+function currentSessionKind(): SessionKind {
+  if (countdownFromMs !== null) return "countdown-from"
+  if (countUpToMs !== null) return "count-up-to"
+  return "elapsed"
+}
+
+function ensureOpenRun() {
+  if (openRun || !log.enabled) return
+  const startedAt = instanceStartedAt ?? snap.startedAt
+  if (startedAt === null) return
+  openRun = {
+    id: crypto.randomUUID(),
+    startedAt,
+    endedAt: startedAt,
+    elapsedMs: 0,
+    kind: currentSessionKind(),
+    mode,
+    fidelity,
+    segments: [],
   }
 }
 
-async function startSession() {
+function closeStretch() {
+  ensureOpenRun()
+  const total = timer?.elapsedMs ?? 0
+  const elapsedMs = total - trackedElapsedBase
+  const startedAt = snap.startedAt
+  if (!openRun || !log.enabled || elapsedMs <= 0 || startedAt === null) return
+  const endedAt = Date.now()
+  openRun = {
+    ...addSegment(openRun, {
+      id: crypto.randomUUID(),
+      startedAt,
+      endedAt,
+      elapsedMs,
+    }),
+    endedAt,
+    elapsedMs: total,
+  }
+  log = upsertRecord(log, openRun)
+  persistLog()
+  trackedElapsedBase = total
+}
+
+function finishOpenRun() {
+  if (!log.enabled) {
+    openRun = null
+    trackedElapsedBase = 0
+    instanceStartedAt = null
+    return
+  }
+  if (openRun && openRun.segments.length > 0) closeStretch()
+  const startedAt = openRun?.startedAt ?? instanceStartedAt ?? snap.startedAt
+  const elapsedMs = timer?.elapsedMs ?? 0
+  if (startedAt !== null && (elapsedMs > 0 || (openRun?.segments.length ?? 0) > 0)) {
+    const record: SessionRecord = {
+      id: openRun?.id ?? crypto.randomUUID(),
+      startedAt,
+      endedAt: Date.now(),
+      elapsedMs,
+      kind: openRun?.kind ?? currentSessionKind(),
+      mode: openRun?.mode ?? mode,
+      fidelity: openRun?.fidelity ?? fidelity,
+      segments: openRun?.segments ?? [],
+    }
+    log = openRun ? upsertRecord(log, record) : appendRecord(log, record)
+    persistLog()
+  }
+  openRun = null
+  trackedElapsedBase = 0
+  instanceStartedAt = null
+}
+
+async function onResume() {
+  if (!timer || snap.state !== "paused") return
+  snap = reduceSession(snap, { type: "RESUME" })
+  await timer.play(timer.elapsedMs)
+  paint()
+}
+
+async function startSession(opts?: {
+  countdownFromMs?: number
+  countUpToMs?: number
+}) {
   if (wakeDriver) {
     await stopSession("user")
   }
 
   let pendingScreen: DriverSession | null = null
-  if (mode === "screen") {
+  if (keepAwake && mode === "screen") {
     pendingScreen = await preflightScreen()
     if (!pendingScreen) {
       // Forced to Video by preflight; Start stays usable.
@@ -905,12 +1410,21 @@ async function startSession() {
     }
   }
 
+  countdownFromMs = opts?.countdownFromMs ?? null
+  countUpToMs = opts?.countUpToMs ?? null
+
   snap = reduceSession(snap, { type: "ARM", mode })
   snap = reduceSession(snap, { type: "START" })
+  trackedElapsedBase = 0
+  instanceStartedAt = snap.startedAt
   paint()
 
   try {
     await ensureSurface({ tMs: 0, resume: "play" })
+    if (!keepAwake) {
+      paint()
+      return
+    }
     if (pendingScreen) {
       wakeDriver = pendingScreen
       pendingScreen = null
@@ -922,6 +1436,10 @@ async function startSession() {
   } catch (err) {
     await pendingScreen?.stop("user")
     await stopDriverOnly("driver_error")
+    countdownFromMs = null
+    countUpToMs = null
+    timer?.setCountdownFrom(null)
+    timer?.setCountUpTo(null)
     timer?.reset()
     if (mode === "screen") {
       recordScreenFailure(err)
@@ -940,26 +1458,18 @@ async function startSession() {
 }
 
 async function stopSession(reason: StopReason) {
-  const wasLive = snap.state === "active" || snap.state === "paused"
-  const elapsedMs = timer?.elapsedMs ?? 0
-  const startedAt = snap.startedAt
+  finishOpenRun()
+  countdownFromMs = null
+  countUpToMs = null
+  timer?.setCountdownFrom(null)
+  timer?.setCountUpTo(null)
   await stopDriverOnly(reason)
   if (timer) {
     timer.reset()
   } else {
     await ensureSurface({ tMs: 0, resume: "idle" })
   }
-  if (wasLive && log.enabled && elapsedMs > 0 && startedAt !== null) {
-    log = appendRecord(log, {
-      id: crypto.randomUUID(),
-      startedAt,
-      endedAt: Date.now(),
-      elapsedMs,
-      mode,
-      fidelity,
-    })
-    persistLog()
-  }
+  trackedElapsedBase = 0
   snap = reduceSession(snap, { type: "STOP", reason })
   paint()
 }
